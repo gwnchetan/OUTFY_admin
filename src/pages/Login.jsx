@@ -1,10 +1,8 @@
 import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
-import { auth, googleProvider } from "../firebase/firebase_config";
-
-// Multiple admin emails allowed
-const ADMIN_EMAILS = ["csakre634@gmail.com", "Makwanahemal08@gmail.com"];
+import { doc, getDoc } from "firebase/firestore";
+import { auth, db, googleProvider } from "../firebase/firebase_config";
 
 function Login() {
   const [error, setError] = React.useState(null);
@@ -12,9 +10,21 @@ function Login() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        navigate("/dashboard");
+        try {
+          const userDoc = await getDoc(doc(db, "users", user.uid));
+          if (userDoc.exists() && userDoc.data().role === 'admin') {
+            navigate("/dashboard");
+          } else {
+            // If they are logged in but not an admin, sign them out.
+            await signOut(auth);
+            setError("Unauthorized access. Only admin can login.");
+          }
+        } catch (err) {
+          await signOut(auth);
+          setError("Error verifying admin status.");
+        }
       }
     });
 
@@ -26,18 +36,10 @@ function Login() {
     setError(null);
 
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const userEmail = result.user.email;
-
-      if (ADMIN_EMAILS.includes(userEmail)) {
-        navigate("/dashboard");
-      } else {
-        await signOut(auth);
-        setError("Unauthorized access. Only admin can login.");
-      }
+      // The actual redirect and verification logic is now handled by the onAuthStateChanged listener above.
+      await signInWithPopup(auth, googleProvider);
     } catch (err) {
       setError(err.message || "Login failed");
-    } finally {
       setLoading(false);
     }
   };
