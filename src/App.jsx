@@ -9,7 +9,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 
 function App() {
   return (
-    <BrowserRouter basename="/admin_penal_outfy">
+    <BrowserRouter basename="/OUTFY_admin">
       <Routes>
         <Route path="/" element={<Login />} />
 
