@@ -10,7 +10,6 @@ const ProductFormModal = ({ isOpen, onClose, onSubmit, isLoading, product = null
     name: "",
     description: "",
     price: "",
-    originalPrice: "",
     category: "",
     target: "unisex",
     sizes: [],
@@ -22,8 +21,9 @@ const ProductFormModal = ({ isOpen, onClose, onSubmit, isLoading, product = null
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadingImageName, setUploadingImageName] = useState("");
   const [imageURLInput, setImageURLInput] = useState("");
-  const [newSizeLabel, setNewSizeLabel] = useState("");
+  const [selectedSizesToAdd, setSelectedSizesToAdd] = useState([]);
   const [newSizeStock, setNewSizeStock] = useState("");
+  const SIZE_OPTIONS = ["XS", "S", "M", "L", "XL", "XXL"];
   // Generate a temporary ID for organizing image uploads when adding new products
   const [tempUploadId] = useState(() => `temp_${Date.now()}_${Math.random().toString(36).substring(7)}`);
 
@@ -34,7 +34,6 @@ const ProductFormModal = ({ isOpen, onClose, onSubmit, isLoading, product = null
         name: product.name || "",
         description: product.description || "",
         price: product.price || "",
-        originalPrice: product.originalPrice || "",
         category: product.category || "",
         target: product.target || "unisex",
         sizes: product.sizes || [],
@@ -47,7 +46,6 @@ const ProductFormModal = ({ isOpen, onClose, onSubmit, isLoading, product = null
         name: "",
         description: "",
         price: "",
-        originalPrice: "",
         category: "",
         target: "unisex",
         sizes: [],
@@ -56,7 +54,7 @@ const ProductFormModal = ({ isOpen, onClose, onSubmit, isLoading, product = null
         isActive: true,
       });
     }
-    setNewSizeLabel("");
+    setSelectedSizesToAdd([]);
     setNewSizeStock("");
     setError(null);
   }, [product, isOpen]);
@@ -136,8 +134,8 @@ const ProductFormModal = ({ isOpen, onClose, onSubmit, isLoading, product = null
   };
 
   const handleAddSize = () => {
-    if (!newSizeLabel.trim()) {
-      setError("Please enter a size label (e.g., S, M, L, XL)");
+    if (selectedSizesToAdd.length === 0) {
+      setError("Please select at least one size before adding stock");
       return;
     }
 
@@ -147,17 +145,23 @@ const ProductFormModal = ({ isOpen, onClose, onSubmit, isLoading, product = null
       return;
     }
 
-    // Check if size already exists
-    if (formData.sizes.some((s) => s.label.toLowerCase() === newSizeLabel.toLowerCase())) {
-      setError("This size already exists");
+    const newSizes = selectedSizesToAdd.filter(
+      (size) => !formData.sizes.some((existing) => existing.label.toLowerCase() === size.toLowerCase())
+    );
+
+    if (newSizes.length === 0) {
+      setError("Selected sizes already exist");
       return;
     }
 
     setFormData((prev) => ({
       ...prev,
-      sizes: [...prev.sizes, { label: newSizeLabel.trim(), stock }],
+      sizes: [
+        ...prev.sizes,
+        ...newSizes.map((label) => ({ label, stock })),
+      ],
     }));
-    setNewSizeLabel("");
+    setSelectedSizesToAdd([]);
     setNewSizeStock("");
     setError(null);
   };
@@ -190,7 +194,6 @@ const ProductFormModal = ({ isOpen, onClose, onSubmit, isLoading, product = null
         name: "",
         description: "",
         price: "",
-        originalPrice: "",
         category: "",
         target: "unisex",
         sizes: [],
@@ -199,7 +202,7 @@ const ProductFormModal = ({ isOpen, onClose, onSubmit, isLoading, product = null
         isActive: true,
       });
       setImageURLInput("");
-      setNewSizeLabel("");
+      setSelectedSizesToAdd([]);
       setNewSizeStock("");
       onClose();
     } catch (err) {
@@ -245,30 +248,17 @@ const ProductFormModal = ({ isOpen, onClose, onSubmit, isLoading, product = null
             />
           </div>
 
-          <div className="form-row">
-            <div className="form-group">
-              <label>Price ($) *</label>
-              <input
-                type="number"
-                name="price"
-                value={formData.price}
-                onChange={handleChange}
-                placeholder="0.00"
-                step="0.01"
-                required
-              />
-            </div>
-            <div className="form-group">
-              <label>Original Price ($)</label>
-              <input
-                type="number"
-                name="originalPrice"
-                value={formData.originalPrice}
-                onChange={handleChange}
-                placeholder="0.00"
-                step="0.01"
-              />
-            </div>
+          <div className="form-group form-group-full">
+            <label>Price (₹) *</label>
+            <input
+              type="number"
+              name="price"
+              value={formData.price}
+              onChange={handleChange}
+              placeholder="0.00"
+              step="0.01"
+              required
+            />
           </div>
 
           <div className="form-row">
@@ -308,12 +298,30 @@ const ProductFormModal = ({ isOpen, onClose, onSubmit, isLoading, product = null
           <div className="form-group form-group-full sizes-management">
             <label>Product Sizes & Stock</label>
             <div className="sizes-input-group">
-              <input
-                type="text"
-                placeholder="Size (e.g., S, M, L, XL)"
-                value={newSizeLabel}
-                onChange={(e) => setNewSizeLabel(e.target.value)}
-              />
+              <div className="size-checkbox-group">
+                <span className="size-radio-label">Sizes</span>
+                <div className="size-radio-options">
+                  {SIZE_OPTIONS.map((size) => (
+                    <label key={size} className={`size-option ${selectedSizesToAdd.includes(size) ? "selected" : ""}`}>
+                      <input
+                        type="checkbox"
+                        name="productSize"
+                        value={size}
+                        checked={selectedSizesToAdd.includes(size)}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setSelectedSizesToAdd((prev) =>
+                            prev.includes(value)
+                              ? prev.filter((item) => item !== value)
+                              : [...prev, value]
+                          );
+                        }}
+                      />
+                      <span>{size}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
               <input
                 type="number"
                 placeholder="Stock"
@@ -505,67 +513,84 @@ const ProductRow = ({ product, onDelete, onEdit }) => {
     ? new Date(product.createdAt.seconds ? product.createdAt.seconds * 1000 : product.createdAt).toLocaleDateString()
     : "—";
 
+  const formatINR = (value) => {
+    if (value === undefined || value === null || value === "") return "—";
+    const number = parseFloat(value);
+    if (Number.isNaN(number)) return "—";
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      maximumFractionDigits: 2,
+    }).format(number);
+  };
+
   const totalStock = getTotalStock();
-  const originalPrice = product.originalPrice ? `$${parseFloat(product.originalPrice).toFixed(2)}` : "—";
 
   return (
     <>
-      <div className="product-row">
-        <div className="product-col product-name">
-          <div className="product-image-thumb">
-            {product.imageURLs && product.imageURLs.length > 0 ? (
-              <img src={product.imageURLs[0]} alt={product.name} />
-            ) : (
-              <div className="product-placeholder">
-                <FiBox size={24} />
+      <tr>
+        <td className="col-product">
+          <div className="product-col product-name">
+            <div className="product-image-thumb">
+              {product.imageURLs && product.imageURLs.length > 0 ? (
+                <img src={product.imageURLs[0]} alt={product.name} />
+              ) : (
+                <div className="product-placeholder">
+                  <FiBox size={24} />
+                </div>
+              )}
+            </div>
+            <div>
+              <p>{product.name}</p>
+              <small>#{product.id.substring(0, 8)}</small>
+            </div>
+          </div>
+        </td>
+        <td className="col-category">{product.category}</td>
+        <td className="col-price">{formatINR(product.price)}</td>
+        <td className="col-stock">
+          <div className="sizes-breakdown">
+            {product.sizes && product.sizes.length > 0 ? (
+              <div className="size-badges">
+                {product.sizes.map((size, idx) => (
+                  <span key={idx} className="size-badge">
+                    {size.label}: {size.stock}
+                  </span>
+                ))}
               </div>
+            ) : (
+              <span>{totalStock}</span>
             )}
           </div>
-          <div>
-            <p>{product.name}</p>
-            <small>#{product.id.substring(0, 8)}</small>
+        </td>
+        <td className="col-status">
+          <span style={{ color: statusColor, fontWeight: 600 }}>{status}</span>
+        </td>
+        <td className="col-added">{createdDate}</td>
+        <td className="col-actions">
+          <div className="product-actions-cell">
+            <button
+              className="btn-action btn-edit"
+              onClick={() => onEdit(product)}
+              title="Edit product"
+            >
+              <FiEdit2 size={16} />
+            </button>
+            <button
+              className="btn-action btn-delete"
+              onClick={handleDelete}
+              disabled={isDeleting}
+              title="Delete product"
+            >
+              {isDeleting ? "..." : <FiTrash2 size={16} />}
+            </button>
           </div>
-        </div>
-        <span>{product.category}</span>
-        <span>${parseFloat(product.price).toFixed(2)}</span>
-        <span className="original-price">{originalPrice}</span>
-        <div className="sizes-breakdown">
-          {product.sizes && product.sizes.length > 0 ? (
-            <div className="size-badges">
-              {product.sizes.map((size, idx) => (
-                <span key={idx} className="size-badge">
-                  {size.label}: {size.stock}
-                </span>
-              ))}
-            </div>
-          ) : (
-            <span>{totalStock}</span>
-          )}
-        </div>
-        <span style={{ color: statusColor, fontWeight: 600 }}>{status}</span>
-        <span>{createdDate}</span>
-        <div className="product-actions-cell">
-          <button
-            className="btn-action btn-edit"
-            onClick={() => onEdit(product)}
-            title="Edit product"
-          >
-            <FiEdit2 size={16} />
-          </button>
-          <button
-            className="btn-action btn-delete"
-            onClick={handleDelete}
-            disabled={isDeleting}
-            title="Delete product"
-          >
-            {isDeleting ? "..." : <FiTrash2 size={16} />}
-          </button>
-        </div>
-      </div>
+        </td>
+      </tr>
       {error && (
-        <div className="product-error-row">
-          <span>⚠️ {error}</span>
-        </div>
+        <tr className="product-error-row">
+          <td colSpan="7">⚠️ {error}</td>
+        </tr>
       )}
     </>
   );
@@ -768,44 +793,61 @@ function Products() {
             </div>
 
             <div className="product-table-card">
-              <div className="table-header-row">
-                <span>PRODUCT</span>
-                <span>CATEGORY</span>
-                <span>PRICE</span>
-                <span>ORIG PRICE</span>
-                <span>STOCK</span>
-                <span>STATUS</span>
-                <span>ADDED</span>
-                <span></span>
-              </div>
+              <table className="product-table">
+                <thead>
+                  <tr>
+                    <th className="col-product">PRODUCT</th>
+                    <th className="col-category">CATEGORY</th>
+                    <th className="col-price">PRICE</th>
+                    <th className="col-stock">STOCK</th>
+                    <th className="col-status">STATUS</th>
+                    <th className="col-added">DATE</th>
+                    <th className="col-actions">ACTIONS</th>
+                  </tr>
+                </thead>
 
-              {loading ? (
-                <div className="loading-state">Loading products...</div>
-              ) : error ? (
-                <div className="error-state">
-                  <p>⚠️ {error}</p>
-                  <button onClick={fetchProducts} className="btn btn-primary">
-                    Retry
-                  </button>
-                </div>
-              ) : filteredProducts.length === 0 ? (
-                <div className="empty-state">
-                  <p>
-                    {searchTerm
-                      ? "No products match your search"
-                      : "No products yet. Click 'Add Product' to get started."}
-                  </p>
-                </div>
-              ) : (
-                filteredProducts.map((product) => (
-                  <ProductRow
-                    key={product.id}
-                    product={product}
-                    onDelete={handleDeleteProduct}
-                    onEdit={handleEditProduct}
-                  />
-                ))
-              )}
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan="7">
+                        <div className="loading-state">Loading products...</div>
+                      </td>
+                    </tr>
+                  ) : error ? (
+                    <tr>
+                      <td colSpan="7">
+                        <div className="error-state">
+                          <p>⚠️ {error}</p>
+                          <button onClick={fetchProducts} className="btn btn-primary">
+                            Retry
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : filteredProducts.length === 0 ? (
+                    <tr>
+                      <td colSpan="7">
+                        <div className="empty-state">
+                          <p>
+                            {searchTerm
+                              ? "No products match your search"
+                              : "No products yet. Click 'Add Product' to get started."}
+                          </p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredProducts.map((product) => (
+                      <ProductRow
+                        key={product.id}
+                        product={product}
+                        onDelete={handleDeleteProduct}
+                        onEdit={handleEditProduct}
+                      />
+                    ))
+                  )}
+                </tbody>
+              </table>
 
               <div className="product-table-footer">
                 Showing {filteredProducts.length} of {totalProducts} products

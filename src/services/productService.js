@@ -32,6 +32,7 @@ export const PRODUCT_CATEGORIES = [
   "Knitwear",
   "Sweaters",
   "Skirts",
+  "Shirts"
   ];
 
 /**
@@ -78,19 +79,9 @@ export const addProduct = async (productData) => {
     }
   }
 
-  // Convert and validate price
   const price = parseFloat(productData.price);
   if (isNaN(price) || price <= 0) {
     throw new Error("Price must be a positive number greater than 0");
-  }
-
-  // Convert and validate originalPrice if provided
-  let originalPrice = null;
-  if (productData.originalPrice) {
-    originalPrice = parseFloat(productData.originalPrice);
-    if (isNaN(originalPrice)) {
-      throw new Error("Original price must be a valid number");
-    }
   }
 
   const validTargets = ["men", "women", "kids", "unisex"];
@@ -108,7 +99,6 @@ export const addProduct = async (productData) => {
       name: productData.name.trim(),
       description: productData.description || "",
       price: price,
-      originalPrice: originalPrice,
       category: productData.category,
       target: productData.target,
       sizes: productData.sizes || [],
@@ -157,19 +147,9 @@ export const updateProduct = async (productId, productData) => {
     }
   }
 
-  // Convert and validate price
   const price = parseFloat(productData.price);
   if (isNaN(price) || price <= 0) {
     throw new Error("Price must be a positive number greater than 0");
-  }
-
-  // Convert and validate originalPrice if provided
-  let originalPrice = null;
-  if (productData.originalPrice) {
-    originalPrice = parseFloat(productData.originalPrice);
-    if (isNaN(originalPrice)) {
-      throw new Error("Original price must be a valid number");
-    }
   }
 
   const validTargets = ["men", "women", "kids", "unisex"];
@@ -183,12 +163,10 @@ export const updateProduct = async (productId, productData) => {
   }
 
   try {
-    const productRef = doc(db, "products", productId);
     await updateDoc(productRef, {
       name: productData.name.trim(),
       description: productData.description || "",
       price: price,
-      originalPrice: originalPrice,
       category: productData.category,
       target: productData.target,
       sizes: productData.sizes || [],

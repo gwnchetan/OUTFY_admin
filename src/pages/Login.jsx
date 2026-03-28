@@ -1,8 +1,7 @@
 import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
-import { auth, db, googleProvider } from "../firebase/firebase_config";
+import { auth, googleProvider } from "../firebase/firebase_config";
 
 function Login() {
   const [error, setError] = React.useState(null);
@@ -12,18 +11,11 @@ function Login() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        try {
-          const userDoc = await getDoc(doc(db, "users", user.uid));
-          if (userDoc.exists() && userDoc.data().role === 'admin') {
-            navigate("/dashboard");
-          } else {
-            // If they are logged in but not an admin, sign them out.
-            await signOut(auth);
-            setError("Unauthorized access. Only admin can login.");
-          }
-        } catch (err) {
+        if (user.email === import.meta.env.VITE_ADMIN_EMAIL) {
+          navigate("/dashboard");
+        } else {
           await signOut(auth);
-          setError("Error verifying admin status.");
+          setError("Unauthorized access. Only admin can login.");
         }
       }
     });
