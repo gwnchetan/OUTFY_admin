@@ -11,21 +11,56 @@ import {
 } from "react-icons/fi";
 import { getOrders, updateOrderStatusWithHistory } from "../services/orderService";
 
+const currencyFormatter = new Intl.NumberFormat("en-IN", {
+  style: "currency",
+  currency: "INR",
+  maximumFractionDigits: 0,
+});
+
+const statusFlow = [
+  "order_placed",
+  "departure",
+  "arrived_city",
+  "out_for_delivery",
+  "delivered",
+];
+
+const statusLabel = (status) => {
+  const labels = {
+    order_placed: "Order Placed",
+    departure: "Departure",
+    arrived_city: "Arrived at Your City",
+    out_for_delivery: "Out for Delivery",
+    delivered: "Delivered",
+    cancelled: "Cancelled",
+  };
+  return labels[status] || status || "Order Placed";
+};
+
+const toDateLabel = (value) => {
+  if (!value) return "—";
+  const date = new Date(value.seconds ? value.seconds * 1000 : value);
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString();
+};
+
 // Order Row Component
 const OrderRow = ({ order, onStatusUpdate }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [error, setError] = useState(null);
 
-  const statuses = ["pending", "confirmed", "shipped", "delivered"];
-  const currentStatusIndex = statuses.indexOf(order.status || "pending");
+  const currentStatusIndex = statusFlow.indexOf(order.status || "order_placed");
+  const canAdvanceStatus =
+    currentStatusIndex >= 0 && currentStatusIndex < statusFlow.length - 1;
 
   const getStatusColor = (status) => {
     const colors = {
-      pending: "#f59e0b",
-      confirmed: "#3b82f6",
-      shipped: "#8b5cf6",
+      order_placed: "#b45309",
+      departure: "#2563eb",
+      arrived_city: "#7c3aed",
+      out_for_delivery: "#ea580c",
       delivered: "#10b981",
+      cancelled: "#dc2626",
     };
     return colors[status] || "#6b7280";
   };
@@ -48,15 +83,18 @@ const OrderRow = ({ order, onStatusUpdate }) => {
     }
   };
 
-  const formattedDate = order.createdAt
-    ? new Date(
-        order.createdAt.seconds ? order.createdAt.seconds * 1000 : order.createdAt
-      ).toLocaleDateString()
-    : "—";
+  const formattedDate = toDateLabel(order.createdAt || order.placedAt);
 
-  const userName = order.userSnapshot?.name || "Unknown";
-  const totalAmount = order.pricing?.totalAmount || 0;
-  const itemCount = order.items?.length || 0;
+  const userName =
+    order.shippingAddress?.fullName || order.userSnapshot?.name || "Unknown";
+  const customerSubline =
+    order.userSnapshot?.email || order.shippingAddress?.phone || "—";
+  const totalAmount =
+    order.pricing?.totalAmount ?? order.total ?? 0;
+  const itemCount =
+    order.itemCount ||
+    order.items?.reduce((sum, item) => sum + (item.quantity || 0), 0) ||
+    0;
 
   return (
     <>
@@ -66,26 +104,26 @@ const OrderRow = ({ order, onStatusUpdate }) => {
             <span className="order-id">#{order.id.substring(0, 8)}</span>
             <span className="customer-name">{userName}</span>
           </div>
-          <span className="order-email">{order.userSnapshot?.email || "—"}</span>
+          <span className="order-email">{customerSubline}</span>
         </div>
 
         <div className="order-items">
           <span className="item-count">{itemCount} items</span>
         </div>
 
-        <span className="amount">${parseFloat(totalAmount).toFixed(2)}</span>
+        <span className="amount">{currencyFormatter.format(parseFloat(totalAmount || 0))}</span>
 
         <div className="status-control">
           <div className="status-badge" style={{ color: getStatusColor(order.status) }}>
-            {order.status || "pending"}
+            {statusLabel(order.status || "order_placed")}
           </div>
 
-          {currentStatusIndex < statuses.length - 1 && (
+          {canAdvanceStatus && (
             <button
               className="btn-next-status"
-              onClick={() => handleStatusChange(statuses[currentStatusIndex + 1])}
+              onClick={() => handleStatusChange(statusFlow[currentStatusIndex + 1])}
               disabled={isUpdating}
-              title={`Update to ${statuses[currentStatusIndex + 1]}`}
+              title={`Update to ${statusLabel(statusFlow[currentStatusIndex + 1])}`}
             >
               {isUpdating ? "..." : "→"}
             </button>
@@ -117,7 +155,7 @@ const OrderRow = ({ order, onStatusUpdate }) => {
                       <span className="item-name">{item.name}</span>
                       <span className="item-qty">Qty: {item.quantity}</span>
                       <span className="item-price">
-                        ${parseFloat(item.priceAtOrder).toFixed(2)}
+                        {currencyFormatter.format(parseFloat(item.priceAtOrder || item.unitPrice || 0))}
                       </span>
                     </div>
                   ))
@@ -132,19 +170,19 @@ const OrderRow = ({ order, onStatusUpdate }) => {
               <div className="pricing-detail">
                 <div className="pricing-row">
                   <span>Subtotal:</span>
-                  <span>${parseFloat(order.pricing?.subtotal || 0).toFixed(2)}</span>
+                  <span>{currencyFormatter.format(parseFloat(order.pricing?.subtotal || order.subtotal || 0))}</span>
                 </div>
                 <div className="pricing-row">
                   <span>Delivery:</span>
-                  <span>${parseFloat(order.pricing?.deliveryCharge || 0).toFixed(2)}</span>
+                  <span>{currencyFormatter.format(parseFloat(order.pricing?.deliveryCharge || 0))}</span>
                 </div>
                 <div className="pricing-row">
                   <span>Tax:</span>
-                  <span>${parseFloat(order.pricing?.tax || 0).toFixed(2)}</span>
+                  <span>{currencyFormatter.format(parseFloat(order.pricing?.tax || 0))}</span>
                 </div>
                 <div className="pricing-row total">
                   <span>Total:</span>
-                  <span>${parseFloat(order.pricing?.totalAmount || 0).toFixed(2)}</span>
+                  <span>{currencyFormatter.format(parseFloat(order.pricing?.totalAmount || order.total || 0))}</span>
                 </div>
               </div>
             </div>
@@ -152,11 +190,14 @@ const OrderRow = ({ order, onStatusUpdate }) => {
             <div className="detail-section">
               <h4>Shipping Address</h4>
               <div className="address-detail">
+                <p>{order.shippingAddress?.fullName || "—"}</p>
                 <p>{order.shippingAddress?.line1 || "—"}</p>
+                {order.shippingAddress?.line2 && <p>{order.shippingAddress.line2}</p>}
                 <p>
                   {order.shippingAddress?.city}, {order.shippingAddress?.state}{" "}
                   {order.shippingAddress?.pincode}
                 </p>
+                <p>{order.shippingAddress?.phone || order.userSnapshot?.phone || "—"}</p>
               </div>
             </div>
 
@@ -165,7 +206,7 @@ const OrderRow = ({ order, onStatusUpdate }) => {
               <div className="payment-detail">
                 <div>
                   <span>Method:</span>
-                  <strong>{order.payment?.method || "—"}</strong>
+                  <strong>{order.payment?.label || order.payment?.method || "—"}</strong>
                 </div>
                 <div>
                   <span>Status:</span>
@@ -187,16 +228,8 @@ const OrderRow = ({ order, onStatusUpdate }) => {
                       style={{ background: getStatusColor(entry.status) }}
                     />
                     <div className="history-content">
-                      <span className="history-status">{entry.status}</span>
-                      <span className="history-time">
-                        {entry.timestamp
-                          ? new Date(
-                              entry.timestamp.seconds
-                                ? entry.timestamp.seconds * 1000
-                                : entry.timestamp
-                            ).toLocaleString()
-                          : "—"}
-                      </span>
+                      <span className="history-status">{statusLabel(entry.status)}</span>
+                      <span className="history-time">{toDateLabel(entry.timestamp)}</span>
                     </div>
                   </div>
                 ))
@@ -257,10 +290,14 @@ function Orders() {
 
   // Calculate metrics
   const totalOrders = orders.length;
-  const pendingOrders = orders.filter((o) => o.status === "pending").length;
+  const placedOrders = orders.filter((o) => o.status === "order_placed").length;
+  const inTransitOrders = orders.filter((o) =>
+    ["departure", "arrived_city", "out_for_delivery"].includes(o.status)
+  ).length;
   const deliveredOrders = orders.filter((o) => o.status === "delivered").length;
+  const cancelledOrders = orders.filter((o) => o.status === "cancelled").length;
   const totalRevenue = orders.reduce(
-    (sum, order) => sum + (order.pricing?.totalAmount || 0),
+    (sum, order) => sum + (order.pricing?.totalAmount || order.total || 0),
     0
   );
 
@@ -291,9 +328,20 @@ function Orders() {
               <FiAlertTriangle />
             </div>
             <div className="metric-content">
-              <p className="metric-label">Pending</p>
-              <h3>{pendingOrders}</h3>
-              <small>Awaiting confirmation</small>
+              <p className="metric-label">Order Placed</p>
+              <h3>{placedOrders}</h3>
+              <small>Fresh new orders</small>
+            </div>
+          </article>
+
+          <article className="metric-card">
+            <div className="metric-icon" style={{ color: "#8b5cf6" }}>
+              <FiTrendingUp />
+            </div>
+            <div className="metric-content">
+              <p className="metric-label">On the Way</p>
+              <h3>{inTransitOrders}</h3>
+              <small>Departure to doorstep</small>
             </div>
           </article>
 
@@ -309,12 +357,23 @@ function Orders() {
           </article>
 
           <article className="metric-card">
-            <div className="metric-icon" style={{ color: "#8b5cf6" }}>
+            <div className="metric-icon" style={{ color: "#ef4444" }}>
+              <FiAlertTriangle />
+            </div>
+            <div className="metric-content">
+              <p className="metric-label">Cancelled</p>
+              <h3>{cancelledOrders}</h3>
+              <small>Stopped before delivery</small>
+            </div>
+          </article>
+
+          <article className="metric-card">
+            <div className="metric-icon" style={{ color: "#ec4899" }}>
               <FiTrendingUp />
             </div>
             <div className="metric-content">
               <p className="metric-label">Total Revenue</p>
-              <h3>${parseFloat(totalRevenue).toFixed(2)}</h3>
+              <h3>{currencyFormatter.format(parseFloat(totalRevenue || 0))}</h3>
               <small>From all orders</small>
             </div>
           </article>

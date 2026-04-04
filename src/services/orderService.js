@@ -2,11 +2,11 @@ import { db } from "../firebase/firebase_config";
 import {
   collection,
   getDocs,
+  getDoc,
   doc,
   updateDoc,
   serverTimestamp,
-  query,
-  orderBy,
+  Timestamp,
 } from "firebase/firestore";
 
 /**
@@ -15,15 +15,17 @@ import {
  */
 export const getOrders = async () => {
   try {
-    const q = query(
-      collection(db, "orders"),
-      orderBy("createdAt", "desc")
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc) => ({
+    const snapshot = await getDocs(collection(db, "orders"));
+    return snapshot.docs
+      .map((doc) => ({
       id: doc.id,
       ...doc.data(),
-    }));
+      }))
+      .sort((a, b) => {
+        const aTime = a.createdAt?.seconds || a.placedAt?.seconds || 0;
+        const bTime = b.createdAt?.seconds || b.placedAt?.seconds || 0;
+        return bTime - aTime;
+      });
   } catch (error) {
     console.error("Error fetching orders:", error);
     throw new Error(`Failed to fetch orders: ${error.message}`);
@@ -41,7 +43,14 @@ export const updateOrderStatus = async (orderId, newStatus) => {
     throw new Error("Order ID is required");
   }
 
-  const validStatuses = ["pending", "confirmed", "shipped", "delivered"];
+  const validStatuses = [
+    "order_placed",
+    "departure",
+    "arrived_city",
+    "out_for_delivery",
+    "delivered",
+    "cancelled",
+  ];
   if (!validStatuses.includes(newStatus)) {
     throw new Error(
       `Invalid status. Must be one of: ${validStatuses.join(", ")}`
@@ -52,21 +61,16 @@ export const updateOrderStatus = async (orderId, newStatus) => {
     const orderRef = doc(db, "orders", orderId);
 
     // Create new status history entry
-    const newHistoryEntry = {
-      status: newStatus,
-      timestamp: serverTimestamp(),
-    };
-
-    // Update order with new status, add to history, and update timestamp
     await updateDoc(orderRef, {
       status: newStatus,
-      statusHistory: [newHistoryEntry, ...null], // Will be handled by server merge
+      statusHistory: [
+        {
+          status: newStatus,
+          timestamp: Timestamp.now(),
+        },
+      ],
       updatedAt: serverTimestamp(),
     });
-
-    // Note: For proper array append, use arrayUnion
-    // This is a simplified approach - ideally use:
-    // statusHistory: arrayUnion(newHistoryEntry)
   } catch (error) {
     console.error("Error updating order status:", error);
     throw new Error(`Failed to update order status: ${error.message}`);
@@ -89,7 +93,14 @@ export const updateOrderStatusWithHistory = async (
     throw new Error("Order ID is required");
   }
 
-  const validStatuses = ["pending", "confirmed", "shipped", "delivered"];
+  const validStatuses = [
+    "order_placed",
+    "departure",
+    "arrived_city",
+    "out_for_delivery",
+    "delivered",
+    "cancelled",
+  ];
   if (!validStatuses.includes(newStatus)) {
     throw new Error(
       `Invalid status. Must be one of: ${validStatuses.join(", ")}`
@@ -98,17 +109,51 @@ export const updateOrderStatusWithHistory = async (
 
   try {
     const orderRef = doc(db, "orders", orderId);
+    const orderSnapshot = await getDoc(orderRef);
+    if (!orderSnapshot.exists()) {
+      throw new Error("Order not found");
+    }
 
-    // Create new status history entry
+    const persistedHistory = orderSnapshot.data()?.statusHistory || currentHistory;
+    const sanitizedHistory = persistedHistory
+      .map((entry) => {
+        if (!entry || typeof entry !== "object") return null;
+
+        const status = typeof entry.status === "string" ? entry.status : "";
+        if (!status) return null;
+
+        const rawTimestamp = entry.timestamp;
+        let timestamp = Timestamp.now();
+
+        if (rawTimestamp instanceof Timestamp) {
+          timestamp = rawTimestamp;
+        } else if (rawTimestamp?.seconds !== undefined) {
+          timestamp = new Timestamp(rawTimestamp.seconds, rawTimestamp.nanoseconds || 0);
+        } else if (rawTimestamp instanceof Date) {
+          timestamp = Timestamp.fromDate(rawTimestamp);
+        } else if (typeof rawTimestamp?.toDate === "function") {
+          timestamp = Timestamp.fromDate(rawTimestamp.toDate());
+        } else if (rawTimestamp) {
+          const parsedDate = new Date(rawTimestamp);
+          if (!Number.isNaN(parsedDate.getTime())) {
+            timestamp = Timestamp.fromDate(parsedDate);
+          }
+        }
+
+        return { status, timestamp };
+      })
+      .filter(Boolean);
+
     const newHistoryEntry = {
       status: newStatus,
-      timestamp: serverTimestamp(),
+      timestamp: Timestamp.now(),
     };
 
-    // Combine new entry with existing history (new entries first)
-    const updatedHistory = [newHistoryEntry, ...currentHistory];
+    const updatedHistory = [
+      newHistoryEntry,
+      ...sanitizedHistory.filter((entry) => entry.status !== newStatus),
+    ];
 
-    // Update order with new status and updated history
     await updateDoc(orderRef, {
       status: newStatus,
       statusHistory: updatedHistory,

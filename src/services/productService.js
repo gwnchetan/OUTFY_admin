@@ -9,6 +9,7 @@ import {
   query,
   orderBy,
   updateDoc,
+  deleteField,
 } from "firebase/firestore";
 import {
   ref,
@@ -33,7 +34,19 @@ export const PRODUCT_CATEGORIES = [
   "Sweaters",
   "Skirts",
   "Shirts"
-  ];
+];
+
+const sanitizeProductData = (productData) => ({
+  name: productData.name.trim(),
+  description: productData.description || "",
+  price: parseFloat(productData.price),
+  category: productData.category,
+  target: productData.target,
+  sizes: productData.sizes || [],
+  tags: productData.tags || [],
+  imageURLs: productData.imageURLs || [],
+  isActive: productData.isActive !== undefined ? productData.isActive : true,
+});
 
 /**
  * Fetch all products from Firestore
@@ -95,22 +108,15 @@ export const addProduct = async (productData) => {
   }
 
   try {
+    const productPayload = sanitizeProductData(productData);
     const docRef = await addDoc(collection(db, "products"), {
-      name: productData.name.trim(),
-      description: productData.description || "",
-      price: price,
-      category: productData.category,
-      target: productData.target,
-      sizes: productData.sizes || [],
-      tags: productData.tags || [],
-      imageURLs: productData.imageURLs || [],
-      isActive: productData.isActive !== undefined ? productData.isActive : true,
+      ...productPayload,
       createdAt: serverTimestamp(),
     });
 
     return {
       id: docRef.id,
-      ...productData,
+      ...productPayload,
       createdAt: new Date(),
     };
   } catch (error) {
@@ -163,16 +169,11 @@ export const updateProduct = async (productId, productData) => {
   }
 
   try {
+    const productRef = doc(db, "products", productId);
+    const productPayload = sanitizeProductData(productData);
     await updateDoc(productRef, {
-      name: productData.name.trim(),
-      description: productData.description || "",
-      price: price,
-      category: productData.category,
-      target: productData.target,
-      sizes: productData.sizes || [],
-      tags: productData.tags || [],
-      imageURLs: productData.imageURLs || [],
-      isActive: productData.isActive !== undefined ? productData.isActive : true,
+      ...productPayload,
+      originalPrice: deleteField(),
       updatedAt: serverTimestamp(),
     });
   } catch (error) {
